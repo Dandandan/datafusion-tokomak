@@ -1,7 +1,10 @@
 # datafusion-tokomak
 Experimental pluggable optimizer for DataFusion using graph rewriting.
 
-The goal is to allow experimenting with the [Egg](https://github.com/egraphs-good/egg) library, and allow a very aggressive 
+The goal is to allow experimenting with the [Egg](https://github.com/egraphs-good/egg) library,
+and experiment with a maintainable and aggresive optimization framework.
+
+The optimizer is WIP.
 
 
 Usage example:
