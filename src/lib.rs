@@ -1,9 +1,11 @@
 use std::vec;
 
-use datafusion::optimizer::utils;
-use datafusion::{logical_plan::LogicalPlan, optimizer::optimizer::OptimizerRule};
+use datafusion::{
+    logical_plan::LogicalPlan, optimizer::optimizer::OptimizerRule, scalar::ScalarValue,
+};
+use datafusion::{logical_plan::Operator, optimizer::utils};
 
-use datafusion::error::Result;
+use datafusion::error::Result as DFResult;
 use datafusion::logical_plan::Expr;
 use egg::{rewrite as rw, *};
 
@@ -53,7 +55,6 @@ define_language! {
         ">" = Gt([Id; 2]),
         ">=" = GtEq([Id; 2]),
 
-
         "is_not_null" = IsNotNull(Id),
         "is_null" = IsNull(Id),
         "negative" = Negative(Id),
@@ -62,59 +63,109 @@ define_language! {
         "like" = Like([Id; 2]),
         "not_like" = NotLike([Id; 2]),
 
-        //Literal(ScalarValue) Should add Eq
+        Int64(i64), // rest is encoded as symbol
+        Column(Symbol),
         Symbol(Symbol),
     }
 }
 
-pub fn to_tokomak_expr(
-    mut rec_expr: &mut RecExpr<TokomakExpr>,
-    expr: Expr,
-) -> Option<(Id, RecExpr<TokomakExpr>)> {
+pub fn to_tokomak_expr(rec_expr: &mut RecExpr<TokomakExpr>, expr: Expr) -> Option<Id> {
     match expr {
         Expr::BinaryExpr { left, op, right } => {
-            let (li, mut left) = to_tokomak_expr(rec_expr, *left)?;
-            let (ri, right) = to_tokomak_expr(&mut left, *right)?;
+            let left = to_tokomak_expr(rec_expr, *left)?;
+            let right = to_tokomak_expr(rec_expr, *right)?;
             let binary_expr = match op {
-                datafusion::logical_plan::Operator::Eq => TokomakExpr::Eq,
-                datafusion::logical_plan::Operator::NotEq => TokomakExpr::NotEq,
-                datafusion::logical_plan::Operator::Lt => TokomakExpr::Lt,
-                datafusion::logical_plan::Operator::LtEq => TokomakExpr::LtEq,
-                datafusion::logical_plan::Operator::Gt => TokomakExpr::Gt,
-                datafusion::logical_plan::Operator::GtEq => TokomakExpr::GtEq,
-                datafusion::logical_plan::Operator::Plus => TokomakExpr::Plus,
-                datafusion::logical_plan::Operator::Minus => TokomakExpr::Minus,
-                datafusion::logical_plan::Operator::Multiply => TokomakExpr::Multiply,
-                datafusion::logical_plan::Operator::Divide => TokomakExpr::Divide,
-                datafusion::logical_plan::Operator::Modulus => TokomakExpr::Modulus,
-                datafusion::logical_plan::Operator::And => TokomakExpr::And,
-                datafusion::logical_plan::Operator::Or => TokomakExpr::Or,
-                datafusion::logical_plan::Operator::Like => TokomakExpr::Like,
-                datafusion::logical_plan::Operator::NotLike => TokomakExpr::NotLike,
+                Operator::Eq => TokomakExpr::Eq,
+                Operator::NotEq => TokomakExpr::NotEq,
+                Operator::Lt => TokomakExpr::Lt,
+                Operator::LtEq => TokomakExpr::LtEq,
+                Operator::Gt => TokomakExpr::Gt,
+                Operator::GtEq => TokomakExpr::GtEq,
+                Operator::Plus => TokomakExpr::Plus,
+                Operator::Minus => TokomakExpr::Minus,
+                Operator::Multiply => TokomakExpr::Multiply,
+                Operator::Divide => TokomakExpr::Divide,
+                Operator::Modulus => TokomakExpr::Modulus,
+                Operator::And => TokomakExpr::And,
+                Operator::Or => TokomakExpr::Or,
+                Operator::Like => TokomakExpr::Like,
+                Operator::NotLike => TokomakExpr::NotLike,
             };
-
-            unimplemented!("TODO")
+            Some(rec_expr.add(binary_expr([left, right])))
         }
+        Expr::Column(c) => Some(rec_expr.add(TokomakExpr::Column(Symbol::from(c)))),
+        Expr::Literal(ScalarValue::Int64(Some(x))) => Some(rec_expr.add(TokomakExpr::Int64(x))),
         // not yet supported
         _ => None,
     }
 }
 
+fn to_exprs(rec_expr: &RecExpr<TokomakExpr>, id: Id) -> Expr {
+    let refs = rec_expr.as_ref();
+    let index: usize = id.into();
+    match refs[index] {
+        // TokomakExpr::Plus(_) => {
+
+        // }
+        // TokomakExpr::Minus(_) => {}
+        // TokomakExpr::Divide(_) => {}
+        // TokomakExpr::Modulus(_) => {}
+        // TokomakExpr::Not(_) => {}
+        // TokomakExpr::Or(_) => {}
+        // TokomakExpr::And(_) => {}
+        // TokomakExpr::Eq(_) => {}
+        // TokomakExpr::NotEq(_) => {}
+        // TokomakExpr::Lt(_) => {}
+        // TokomakExpr::LtEq(_) => {}
+        // TokomakExpr::Gt(_) => {}
+        // TokomakExpr::GtEq(_) => {}
+        // TokomakExpr::IsNotNull(_) => {}
+        // TokomakExpr::IsNull(_) => {}
+        // TokomakExpr::Negative(_) => {}
+        // TokomakExpr::Between(_) => {}
+        // TokomakExpr::BetweenInverted(_) => {}
+        // TokomakExpr::Like(_) => {}
+        // TokomakExpr::NotLike(_) => {}
+        TokomakExpr::Multiply(ids) => {
+            let l = to_exprs(&rec_expr, ids[0]);
+            let r = to_exprs(&rec_expr, ids[1]);
+
+            Expr::BinaryExpr {
+                left: Box::new(l),
+                op: Operator::Multiply,
+                right: Box::new(r),
+            }
+        }
+        TokomakExpr::Int64(i) => Expr::Literal(ScalarValue::Int64(Some(i))),
+        TokomakExpr::Column(col) => Expr::Column(col.to_string()),
+        _ => unimplemented!("unimplemented to_exprs"),
+    }
+}
+
 impl OptimizerRule for Tokomak {
-    fn optimize(&self, plan: &LogicalPlan) -> Result<LogicalPlan> {
+    fn optimize(&self, plan: &LogicalPlan) -> DFResult<LogicalPlan> {
         let inputs = plan.inputs();
-        let new_inputs = inputs
+        let new_inputs: Vec<LogicalPlan> = inputs
             .iter()
             .map(|plan| self.optimize(plan))
-            .collect::<Result<Vec<_>>>()?;
-        // optimize all expressions
-        let rec_expr = &mut RecExpr::default();
+            .collect::<DFResult<Vec<_>>>()?;
+        // optimize all expressions individuall (for now)
         let mut exprs = vec![];
         for expr in plan.expressions().iter() {
+            let rec_expr = &mut RecExpr::default();
             let tok_expr = to_tokomak_expr(rec_expr, expr.clone());
             match tok_expr {
                 None => exprs.push(expr.clone()),
-                Some(expr) => unimplemented!("!!"),
+                Some(_expr) => {
+                    let runner = Runner::<TokomakExpr, (), ()>::default()
+                        .with_expr(rec_expr)
+                        .run(&rules());
+
+                    let mut extractor = Extractor::new(&runner.egraph, AstSize);
+                    let (_, best_expr) = extractor.find_best(runner.roots[0]);
+                    let start = best_expr.as_ref().len() - 1;
+                    exprs.push(to_exprs(&best_expr, start.into()).clone());
+                }
             }
         }
 
@@ -128,7 +179,10 @@ impl OptimizerRule for Tokomak {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use super::*;
+    use datafusion::prelude::{CsvReadOptions, ExecutionConfig, ExecutionContext};
     use egg::Runner;
 
     #[test]
@@ -162,5 +216,27 @@ mod tests {
             format!("{}", best_expr),
             "(and (= 1 2) (or boo (or foo bar)))"
         )
+    }
+
+    #[tokio::test]
+    async fn custom_optimizer() {
+        // register custom tokomak optimizer, verify that optimization took place
+
+        let mut ctx = ExecutionContext::with_config(
+            ExecutionConfig::new().add_optimizer_rule(Arc::new(Tokomak::new())),
+        );
+
+        ctx.register_csv("example", "tests/example.csv", CsvReadOptions::new())
+            .unwrap();
+
+        // create a plan to run a SQL query
+        let lp = ctx
+            .sql("SELECT price*0 from example")
+            .unwrap()
+            .to_logical_plan();
+
+        assert_eq!(format!("{}", lp.display_indent()),
+            "Projection: Int64(0)\
+            \n  TableScan: example projection=Some([0])")
     }
 }
