@@ -27,10 +27,15 @@ pub fn rules() -> Vec<Rewrite<TokomakExpr, ()>> {
         rw!("commute-or"; "(or ?x ?y)" => "(or ?y ?x)"),
         rw!("commute-eq"; "(= ?x ?y)" => "(= ?y ?x)"),
         rw!("commute-neq"; "(<> ?x ?y)" => "(<> ?y ?x)"),
+        rw!("converse-gt"; "(> ?x ?y)"=> "(< ?x ?y)"),
+        rw!("converse-gte"; "(>= ?x ?y)"=> "(<= ?x ?y)"),
+        rw!("converse-lt"; "(< ?x ?y)"=> "(> ?x ?y)"),
+        rw!("converse-lte"; "(<= ?x ?y)"=> "(>= ?x ?y)"),
         rw!("add-0"; "(+ ?x 0)" => "?x"),
         rw!("minus-0"; "(- ?x 0)" => "?x"),
         rw!("mul-0"; "(* ?x 0)" => "0"),
         rw!("mul-1"; "(* ?x 1)" => "?x"),
+        rw!("div-1"; "(/ ?x 1)" => "?x"),
         rw!("dist-and-or"; "(or (and ?a ?b) (and ?a ?c))" => "(and ?a (or ?b ?c))"),
         rw!("dist-or-and"; "(and (or ?a ?b) (or ?a ?c))" => "(or ?a (and ?b ?c))"),
         rw!("not-not"; "(not (not ?x))" => "?x"),
@@ -235,8 +240,10 @@ mod tests {
             .unwrap()
             .to_logical_plan();
 
-        assert_eq!(format!("{}", lp.display_indent()),
+        assert_eq!(
+            format!("{}", lp.display_indent()),
             "Projection: Int64(0)\
-            \n  TableScan: example projection=Some([0])")
+            \n  TableScan: example projection=Some([0])"
+        )
     }
 }
