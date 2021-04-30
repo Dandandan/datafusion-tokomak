@@ -17,6 +17,7 @@ impl Tokomak {
         Self {}
     }
 }
+pub type EGraph = egg::EGraph<Tokomak, ()>;
 
 pub fn rules() -> Vec<Rewrite<TokomakExpr, ()>> {
     // TODO: add useful properties
@@ -32,6 +33,7 @@ pub fn rules() -> Vec<Rewrite<TokomakExpr, ()>> {
         rw!("converse-lt"; "(< ?x ?y)"=> "(> ?x ?y)"),
         rw!("converse-lte"; "(<= ?x ?y)"=> "(>= ?x ?y)"),
         rw!("add-0"; "(+ ?x 0)" => "?x"),
+        rw!("add-assoc"; "(+ (+ ?a ?b) ?c)" => "(+ ?a (+ ?b ?c))"),
         rw!("minus-0"; "(- ?x 0)" => "?x"),
         rw!("mul-0"; "(* ?x 0)" => "0"),
         rw!("mul-1"; "(* ?x 1)" => "?x"),
@@ -39,6 +41,13 @@ pub fn rules() -> Vec<Rewrite<TokomakExpr, ()>> {
         rw!("dist-and-or"; "(or (and ?a ?b) (and ?a ?c))" => "(and ?a (or ?b ?c))"),
         rw!("dist-or-and"; "(and (or ?a ?b) (or ?a ?c))" => "(or ?a (and ?b ?c))"),
         rw!("not-not"; "(not (not ?x))" => "?x"),
+        rw!("or-same"; "(or ?x ?x)" => "?x"),
+        rw!("and-same"; "(and ?x ?x)" => "?x"),
+        rw!("cancel-sub"; "(- ?a ?a)" => "0"),
+        rw!("and-true"; "(and true ?x)"=> "true"),
+        rw!("and-false"; "(and false ?x)"=> "false"),
+        rw!("or-false"; "(or false ?x)"=> "?x"),
+        rw!("or-true"; "(or true ?x)"=> "true"),
     ];
 }
 
@@ -67,7 +76,8 @@ define_language! {
         "between_inverted" = BetweenInverted([Id; 3]),
         "like" = Like([Id; 2]),
         "not_like" = NotLike([Id; 2]),
-
+        "true" = True,
+        "false" = False,
         Int64(i64), // rest is encoded as symbol
         Column(Symbol),
         Symbol(Symbol),
@@ -100,6 +110,10 @@ pub fn to_tokomak_expr(rec_expr: &mut RecExpr<TokomakExpr>, expr: Expr) -> Optio
         }
         Expr::Column(c) => Some(rec_expr.add(TokomakExpr::Column(Symbol::from(c)))),
         Expr::Literal(ScalarValue::Int64(Some(x))) => Some(rec_expr.add(TokomakExpr::Int64(x))),
+        Expr::Not(expr) => {
+            let left = to_tokomak_expr(rec_expr, *expr)?;
+            Some(rec_expr.add(TokomakExpr::Not(left)))
+        }
         // not yet supported
         _ => None,
     }
@@ -109,28 +123,65 @@ fn to_exprs(rec_expr: &RecExpr<TokomakExpr>, id: Id) -> Expr {
     let refs = rec_expr.as_ref();
     let index: usize = id.into();
     match refs[index] {
-        // TokomakExpr::Plus(_) => {
+        TokomakExpr::Plus(ids) => {
+            let l = to_exprs(&rec_expr, ids[0]);
+            let r = to_exprs(&rec_expr, ids[1]);
 
-        // }
-        // TokomakExpr::Minus(_) => {}
-        // TokomakExpr::Divide(_) => {}
-        // TokomakExpr::Modulus(_) => {}
-        // TokomakExpr::Not(_) => {}
-        // TokomakExpr::Or(_) => {}
-        // TokomakExpr::And(_) => {}
-        // TokomakExpr::Eq(_) => {}
-        // TokomakExpr::NotEq(_) => {}
-        // TokomakExpr::Lt(_) => {}
-        // TokomakExpr::LtEq(_) => {}
-        // TokomakExpr::Gt(_) => {}
-        // TokomakExpr::GtEq(_) => {}
-        // TokomakExpr::IsNotNull(_) => {}
-        // TokomakExpr::IsNull(_) => {}
-        // TokomakExpr::Negative(_) => {}
-        // TokomakExpr::Between(_) => {}
-        // TokomakExpr::BetweenInverted(_) => {}
-        // TokomakExpr::Like(_) => {}
-        // TokomakExpr::NotLike(_) => {}
+            Expr::BinaryExpr {
+                left: Box::new(l),
+                op: Operator::Plus,
+                right: Box::new(r),
+            }
+        }
+        TokomakExpr::Minus(ids) => {
+            let l = to_exprs(&rec_expr, ids[0]);
+            let r = to_exprs(&rec_expr, ids[1]);
+
+            Expr::BinaryExpr {
+                left: Box::new(l),
+                op: Operator::Minus,
+                right: Box::new(r),
+            }
+        }
+        TokomakExpr::Divide(ids) => {
+            let l = to_exprs(&rec_expr, ids[0]);
+            let r = to_exprs(&rec_expr, ids[1]);
+
+            Expr::BinaryExpr {
+                left: Box::new(l),
+                op: Operator::Divide,
+                right: Box::new(r),
+            }
+        }
+        TokomakExpr::Modulus(ids) => {
+            let l = to_exprs(&rec_expr, ids[0]);
+            let r = to_exprs(&rec_expr, ids[1]);
+
+            Expr::BinaryExpr {
+                left: Box::new(l),
+                op: Operator::Modulus,
+                right: Box::new(r),
+            }
+        }
+        TokomakExpr::Not(id) => {
+            let l = to_exprs(&rec_expr, id);
+            Expr::Not(Box::new(l))
+        }
+        // TokomakExpr::Or(ids) => {}
+        // TokomakExpr::And(ids) => {}
+        // TokomakExpr::Eq(ids) => {}
+        // TokomakExpr::NotEq(ids) => {}
+        // TokomakExpr::Lt(ids) => {}
+        // TokomakExpr::LtEq(ids) => {}
+        // TokomakExpr::Gt(ids) => {}
+        // TokomakExpr::GtEq(ids) => {}
+        // TokomakExpr::IsNotNull(ids) => {}
+        // TokomakExpr::IsNull(ids) => {}
+        // TokomakExpr::Negative(ids) => {}
+        // TokomakExpr::Between(ids) => {}
+        // TokomakExpr::BetweenInverted(ids) => {}
+        // TokomakExpr::Like(ids) => {}
+        // TokomakExpr::NotLike(ids) => {}
         TokomakExpr::Multiply(ids) => {
             let l = to_exprs(&rec_expr, ids[0]);
             let r = to_exprs(&rec_expr, ids[1]);
@@ -141,6 +192,37 @@ fn to_exprs(rec_expr: &RecExpr<TokomakExpr>, id: Id) -> Expr {
                 right: Box::new(r),
             }
         }
+        TokomakExpr::Or(ids) => {
+            let l = to_exprs(&rec_expr, ids[0]);
+            let r = to_exprs(&rec_expr, ids[1]);
+
+            Expr::BinaryExpr {
+                left: Box::new(l),
+                op: Operator::Or,
+                right: Box::new(r),
+            }
+        }
+        TokomakExpr::And(ids) => {
+            let l = to_exprs(&rec_expr, ids[0]);
+            let r = to_exprs(&rec_expr, ids[1]);
+
+            Expr::BinaryExpr {
+                left: Box::new(l),
+                op: Operator::And,
+                right: Box::new(r),
+            }
+        }
+        TokomakExpr::Eq(ids) => {
+            let l = to_exprs(&rec_expr, ids[0]);
+            let r = to_exprs(&rec_expr, ids[1]);
+
+            Expr::BinaryExpr {
+                left: Box::new(l),
+                op: Operator::Eq,
+                right: Box::new(r),
+            }
+        }
+
         TokomakExpr::Int64(i) => Expr::Literal(ScalarValue::Int64(Some(i))),
         TokomakExpr::Column(col) => Expr::Column(col.to_string()),
         _ => unimplemented!("unimplemented to_exprs"),
@@ -154,7 +236,7 @@ impl OptimizerRule for Tokomak {
             .iter()
             .map(|plan| self.optimize(plan))
             .collect::<DFResult<Vec<_>>>()?;
-        // optimize all expressions individuall (for now)
+        // optimize all expressions individual (for now)
         let mut exprs = vec![];
         for expr in plan.expressions().iter() {
             let rec_expr = &mut RecExpr::default();
@@ -243,6 +325,29 @@ mod tests {
         assert_eq!(
             format!("{}", lp.display_indent()),
             "Projection: Int64(0)\
+            \n  TableScan: example projection=Some([0])"
+        )
+    }
+
+    #[tokio::test]
+    async fn custom_optimizer_filter() {
+        // register custom tokomak optimizer, verify that optimization took place
+
+        let mut ctx = ExecutionContext::with_config(
+            ExecutionConfig::new().add_optimizer_rule(Arc::new(Tokomak::new())),
+        );
+        ctx.register_csv("example", "tests/example.csv", CsvReadOptions::new())
+            .unwrap();
+
+        // create a plan to run a SQL query
+        let lp = ctx
+            .sql("SELECT price from example WHERE (price=1 AND price=2) OR (price=1 AND price=3)")
+            .unwrap()
+            .to_logical_plan();
+
+        assert_eq!(
+            format!("{}", lp.display_indent()),
+            "Filter: #price Eq Int64(1) And #price Eq Int64(2) Or #price Eq Int64(3)\
             \n  TableScan: example projection=Some([0])"
         )
     }
