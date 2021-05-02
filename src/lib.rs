@@ -45,6 +45,7 @@ pub fn rules() -> Vec<Rewrite<TokomakExpr, ()>> {
         rw!("and-same"; "(and ?x ?x)" => "?x"),
         rw!("cancel-sub"; "(- ?a ?a)" => "0"),
         rw!("and-true"; "(and true ?x)"=> "true"),
+        rw!("0-minus"; "(- 0 ?x)"=> "(negative ?x)"),
         rw!("and-false"; "(and false ?x)"=> "false"),
         rw!("or-false"; "(or false ?x)"=> "?x"),
         rw!("or-true"; "(or true ?x)"=> "true"),
@@ -114,6 +115,15 @@ pub fn to_tokomak_expr(rec_expr: &mut RecExpr<TokomakExpr>, expr: Expr) -> Optio
             let left = to_tokomak_expr(rec_expr, *expr)?;
             Some(rec_expr.add(TokomakExpr::Not(left)))
         }
+        Expr::IsNull(expr) => {
+            let left = to_tokomak_expr(rec_expr, *expr)?;
+            Some(rec_expr.add(TokomakExpr::IsNull(left)))
+        }
+        Expr::IsNotNull(expr) => {
+            let left = to_tokomak_expr(rec_expr, *expr)?;
+            Some(rec_expr.add(TokomakExpr::IsNotNull(left)))
+        }
+
         // not yet supported
         _ => None,
     }
@@ -167,21 +177,21 @@ fn to_exprs(rec_expr: &RecExpr<TokomakExpr>, id: Id) -> Expr {
             let l = to_exprs(&rec_expr, id);
             Expr::Not(Box::new(l))
         }
-        // TokomakExpr::Or(ids) => {}
-        // TokomakExpr::And(ids) => {}
-        // TokomakExpr::Eq(ids) => {}
-        // TokomakExpr::NotEq(ids) => {}
-        // TokomakExpr::Lt(ids) => {}
-        // TokomakExpr::LtEq(ids) => {}
-        // TokomakExpr::Gt(ids) => {}
-        // TokomakExpr::GtEq(ids) => {}
-        // TokomakExpr::IsNotNull(ids) => {}
-        // TokomakExpr::IsNull(ids) => {}
-        // TokomakExpr::Negative(ids) => {}
+        TokomakExpr::IsNotNull(id) => {
+            let l = to_exprs(&rec_expr, id);
+            Expr::IsNotNull(Box::new(l))
+        }
+        TokomakExpr::IsNull(id) => {
+            let l = to_exprs(&rec_expr, id);
+            Expr::IsNull(Box::new(l))
+        }
+        TokomakExpr::Negative(id) => {
+            let l = to_exprs(&rec_expr, id);
+            Expr::Negative(Box::new(l))
+        }
+
         // TokomakExpr::Between(ids) => {}
         // TokomakExpr::BetweenInverted(ids) => {}
-        // TokomakExpr::Like(ids) => {}
-        // TokomakExpr::NotLike(ids) => {}
         TokomakExpr::Multiply(ids) => {
             let l = to_exprs(&rec_expr, ids[0]);
             let r = to_exprs(&rec_expr, ids[1]);
@@ -219,6 +229,76 @@ fn to_exprs(rec_expr: &RecExpr<TokomakExpr>, id: Id) -> Expr {
             Expr::BinaryExpr {
                 left: Box::new(l),
                 op: Operator::Eq,
+                right: Box::new(r),
+            }
+        }
+        TokomakExpr::NotEq(ids) => {
+            let l = to_exprs(&rec_expr, ids[0]);
+            let r = to_exprs(&rec_expr, ids[1]);
+
+            Expr::BinaryExpr {
+                left: Box::new(l),
+                op: Operator::NotEq,
+                right: Box::new(r),
+            }
+        }
+        TokomakExpr::Lt(ids) => {
+            let l = to_exprs(&rec_expr, ids[0]);
+            let r = to_exprs(&rec_expr, ids[1]);
+
+            Expr::BinaryExpr {
+                left: Box::new(l),
+                op: Operator::Lt,
+                right: Box::new(r),
+            }
+        }
+        TokomakExpr::LtEq(ids) => {
+            let l = to_exprs(&rec_expr, ids[0]);
+            let r = to_exprs(&rec_expr, ids[1]);
+
+            Expr::BinaryExpr {
+                left: Box::new(l),
+                op: Operator::LtEq,
+                right: Box::new(r),
+            }
+        }
+        TokomakExpr::Gt(ids) => {
+            let l = to_exprs(&rec_expr, ids[0]);
+            let r = to_exprs(&rec_expr, ids[1]);
+
+            Expr::BinaryExpr {
+                left: Box::new(l),
+                op: Operator::Gt,
+                right: Box::new(r),
+            }
+        }
+        TokomakExpr::GtEq(ids) => {
+            let l = to_exprs(&rec_expr, ids[0]);
+            let r = to_exprs(&rec_expr, ids[1]);
+
+            Expr::BinaryExpr {
+                left: Box::new(l),
+                op: Operator::GtEq,
+                right: Box::new(r),
+            }
+        }
+        TokomakExpr::Like(ids) => {
+            let l = to_exprs(&rec_expr, ids[0]);
+            let r = to_exprs(&rec_expr, ids[1]);
+
+            Expr::BinaryExpr {
+                left: Box::new(l),
+                op: Operator::Like,
+                right: Box::new(r),
+            }
+        }
+        TokomakExpr::NotLike(ids) => {
+            let l = to_exprs(&rec_expr, ids[0]);
+            let r = to_exprs(&rec_expr, ids[1]);
+
+            Expr::BinaryExpr {
+                left: Box::new(l),
+                op: Operator::NotLike,
                 right: Box::new(r),
             }
         }
@@ -318,13 +398,13 @@ mod tests {
 
         // create a plan to run a SQL query
         let lp = ctx
-            .sql("SELECT price*0 from example")
+            .sql("SELECT price*0-price from example")
             .unwrap()
             .to_logical_plan();
 
         assert_eq!(
             format!("{}", lp.display_indent()),
-            "Projection: Int64(0)\
+            "Projection: (- #price)\
             \n  TableScan: example projection=Some([0])"
         )
     }
