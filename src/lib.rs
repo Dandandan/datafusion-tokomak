@@ -44,7 +44,7 @@ pub fn rules() -> Vec<Rewrite<TokomakExpr, ()>> {
         rw!("or-same"; "(or ?x ?x)" => "?x"),
         rw!("and-same"; "(and ?x ?x)" => "?x"),
         rw!("cancel-sub"; "(- ?a ?a)" => "0"),
-        rw!("and-true"; "(and true ?x)"=> "true"),
+        rw!("and-true"; "(and true ?x)"=> "?x"),
         rw!("0-minus"; "(- 0 ?x)"=> "(negative ?x)"),
         rw!("and-false"; "(and false ?x)"=> "false"),
         rw!("or-false"; "(or false ?x)"=> "?x"),
@@ -77,9 +77,10 @@ define_language! {
         "between_inverted" = BetweenInverted([Id; 3]),
         "like" = Like([Id; 2]),
         "not_like" = NotLike([Id; 2]),
-        "true" = True,
-        "false" = False,
-        Int64(i64), // rest is encoded as symbol
+        Bool(bool),
+        Int64(i64),
+        Utf8(String),
+        LargeUtf8(String),
         Column(Symbol),
         Symbol(Symbol),
     }
@@ -111,6 +112,13 @@ pub fn to_tokomak_expr(rec_expr: &mut RecExpr<TokomakExpr>, expr: Expr) -> Optio
         }
         Expr::Column(c) => Some(rec_expr.add(TokomakExpr::Column(Symbol::from(c)))),
         Expr::Literal(ScalarValue::Int64(Some(x))) => Some(rec_expr.add(TokomakExpr::Int64(x))),
+        Expr::Literal(ScalarValue::Utf8(Some(x))) => Some(rec_expr.add(TokomakExpr::Utf8(x))),
+        Expr::Literal(ScalarValue::LargeUtf8(Some(x))) => {
+            Some(rec_expr.add(TokomakExpr::LargeUtf8(x)))
+        }
+        Expr::Literal(ScalarValue::Boolean(Some(x))) => {
+            Some(rec_expr.add(TokomakExpr::Bool(x)))
+        }
         Expr::Not(expr) => {
             let left = to_tokomak_expr(rec_expr, *expr)?;
             Some(rec_expr.add(TokomakExpr::Not(left)))
@@ -304,6 +312,8 @@ fn to_exprs(rec_expr: &RecExpr<TokomakExpr>, id: Id) -> Expr {
         }
 
         TokomakExpr::Int64(i) => Expr::Literal(ScalarValue::Int64(Some(i))),
+        TokomakExpr::Utf8(ref i) => Expr::Literal(ScalarValue::Utf8(Some(i.clone()))),
+        TokomakExpr::LargeUtf8(ref i) => Expr::Literal(ScalarValue::LargeUtf8(Some(i.clone()))),
         TokomakExpr::Column(col) => Expr::Column(col.to_string()),
         _ => unimplemented!("unimplemented to_exprs"),
     }
