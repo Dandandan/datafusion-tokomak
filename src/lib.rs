@@ -82,7 +82,6 @@ define_language! {
         Utf8(String),
         LargeUtf8(String),
         Column(Symbol),
-        Symbol(Symbol),
     }
 }
 
@@ -198,8 +197,30 @@ fn to_exprs(rec_expr: &RecExpr<TokomakExpr>, id: Id) -> Expr {
             Expr::Negative(Box::new(l))
         }
 
-        // TokomakExpr::Between(ids) => {}
-        // TokomakExpr::BetweenInverted(ids) => {}
+        TokomakExpr::Between([expr, low, high]) => {
+            let left = to_exprs(&rec_expr, expr);
+            let low_expr = to_exprs(&rec_expr, low);
+            let high_expr = to_exprs(&rec_expr, high);
+
+            Expr::Between{
+                expr: Box::new(left),
+                negated: false,
+                low: Box::new(low_expr),
+                high: Box::new(high_expr),
+            }
+        }
+        TokomakExpr::BetweenInverted([expr, low, high]) => {
+            let left = to_exprs(&rec_expr, expr);
+            let low_expr = to_exprs(&rec_expr, low);
+            let high_expr = to_exprs(&rec_expr, high);
+
+            Expr::Between{
+                expr: Box::new(left),
+                negated: false,
+                low: Box::new(low_expr),
+                high: Box::new(high_expr),
+            }
+        }
         TokomakExpr::Multiply(ids) => {
             let l = to_exprs(&rec_expr, ids[0]);
             let r = to_exprs(&rec_expr, ids[1]);
@@ -315,7 +336,9 @@ fn to_exprs(rec_expr: &RecExpr<TokomakExpr>, id: Id) -> Expr {
         TokomakExpr::Utf8(ref i) => Expr::Literal(ScalarValue::Utf8(Some(i.clone()))),
         TokomakExpr::LargeUtf8(ref i) => Expr::Literal(ScalarValue::LargeUtf8(Some(i.clone()))),
         TokomakExpr::Column(col) => Expr::Column(col.to_string()),
-        _ => unimplemented!("unimplemented to_exprs"),
+        TokomakExpr::Bool(b) => {
+            Expr::Literal(ScalarValue::Boolean(Some(b)))
+        }
     }
 }
 
